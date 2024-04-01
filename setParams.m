@@ -11,6 +11,7 @@ function nTimeSteps = setParams (inputpath,codepath,listterm,Nx,Ny,Nr)
   addpath /Users/sarahvillhauer/Desktop/MITgcm-master/MITgcm_SC/GSW/html;
   addpath /Users/sarahvillhauer/Desktop/MITgcm-master/MITgcm_SC/GSW/library;
   addpath /Users/sarahvillhauer/Desktop/MITgcm-master/MITgcm_SC/GSW/pdf;
+  addpath /Users/sarahvillhauer/Desktop/MITgcm-master/utils/matlab/cs_grid/read_cs;
     
   %%% TODO ADD SEA ICE AND ATMOSPHERIC FORCING; REMOVE SW, LW, SENS HEAT FLUXES      
   %%% TODO add sponges for waves?
@@ -56,11 +57,11 @@ function nTimeSteps = setParams (inputpath,codepath,listterm,Nx,Ny,Nr)
   %%%%% SIMULATION CONTROL PARAMETERS %%%%%
   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   
-  nonHydrostatic = false; %%% Whether to run in nonhydrostatic mode
+  nonHydrostatic = true; %false; %%% Whether to run in nonhydrostatic mode
   use_seaIce = false; %%% Whether to run with sea ice (not yet implemented)
   use_3D = true; %%% Whether to run a 3D vs 2D simulation
   Ypoly = 0; %%% Latitudinal location 
-  Wpoly = 5*m1km; %%% Latitudinal width
+  Wpoly = 5*m1km; %%% Latitudinal width 
   
   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   %%%%% FIXED PARAMETER VALUES %%%%%
@@ -68,13 +69,13 @@ function nTimeSteps = setParams (inputpath,codepath,listterm,Nx,Ny,Nr)
   
   simTime = 10*t1day; %%% Simulation time  
   nIter0 = 0; %%% Initial iteration 
-  Lx = 1*m1km; %%% Domain size in x 
-  Ly = 1*m1km; %%% Domain size in y   
-  H = 41.5; %%% Domain size in z 
+  Lx = 5*m1km; %%% Domain size in x 
+  Ly = 3*m1km; %%% Domain size in y   
+  H = 200; %33.75; %29.85; %29.75; %29.6500; %41.5; %%% Domain size in z 
   g = 9.81; %%% Gravity
   Omega = 2*pi*366/365/86400;  
   lat0 = 77; %%% Latitude at southern boundary
-  f0 = 0; %2*Omega*sind(lat0); % f0 = 2*Omega*sind(lat0); %%% Coriolis parameter      
+  f0 = -1.4e-4; %0; %2*Omega*sind(lat0); % f0 = 2*Omega*sind(lat0); %%% Coriolis parameter      
   rho0 = 1000;  
   
   %%% Diffusion parameters
@@ -83,9 +84,9 @@ function nTimeSteps = setParams (inputpath,codepath,listterm,Nx,Ny,Nr)
   viscAhGrid = 0; %%% Grid-dependent viscosity
 %   viscA4Grid = 0.2; %%% Grid-dependent biharmonic viscosity    
 %   viscC4smag = 0; %%% Smagorinsky biharmonic viscosity
-%   diffK4Tgrid = 0.2; %%% Grid-dependent biharmonic diffusivity
+%   difK4Tgrid = 0.2; %%% Grid-dependent biharmonic diffusivity
   viscA4Grid = 0; %%% Grid-dependent biharmonic viscosity    
-  viscC4smag = 0; %%% Smagorinsky biharmonic viscosity
+  viscC4smag = 4.00000000e+00; %%% Smagorinsky biharmonic viscosity
   diffK4Tgrid = 0.0; %%% Grid-dependent biharmonic diffusivity
   viscAr = 0; %%% Vertical viscosity
   diffKhT = 0; %%% Horizontal temp diffusion
@@ -129,7 +130,7 @@ periodicExternalForcing = true;
   parm01.addParm('viscC2leithD',0,PARM_REAL); 
   parm01.addParm('viscC2smag',0,PARM_REAL); 
   parm01.addParm('viscC4smag',viscC4smag,PARM_REAL); 
-  parm01.addParm('smag3D_coeff',smag3D_coeff,PARM_REAL); 
+  parm01.addParm('smag3D_coeff',smag3D_coeff,PARM_REAL);
 
   %%% diffusivity
   parm01.addParm('diffKrT',diffKrT,PARM_REAL);
@@ -152,7 +153,8 @@ periodicExternalForcing = true;
   parm01.addParm('no_slip_sides',false,PARM_BOOL);
   parm01.addParm('no_slip_bottom',false,PARM_BOOL);
   parm01.addParm('bottomDragLinear',0,PARM_REAL);
-  parm01.addParm('bottomDragQuadratic',2e-3,PARM_REAL); %2e-3
+  parm01.addParm('bottomDragQuadratic',0,PARM_REAL); %2e-3
+  %parm01.addParm('sideDragFactor',2,PARM_REAL);
   %%% physical parameters
   parm01.addParm('f0',f0,PARM_REAL);
   parm01.addParm('gravity',g,PARM_REAL);
@@ -239,42 +241,58 @@ periodicExternalForcing = true;
   %%%%%%%%%%%%%%%%%%%%%%%%    
     
 
-  %%% Uniform meridional grid   
+  %%% Uniform meridional grid
   dy = (Ly/Ny)*ones(1,Ny);
   yy = cumsum(dy);
   yy = yy-mean(yy);
-  
+
   %%% Zonal grid
-  if (use_3D)
-    dx = Lx/Nx*ones(1,Nx);  
-    xx = cumsum(dx);
-    xx = xx-mean(xx);
-  else
-    dx = dy(1);
-    xx = 0;
-  end
- 
+
+  xfac= .6347;
+  shelfthickness = 100;
+  dxmin= 24/xfac; %m, smallest dx
+  dxmax = 113/xfac; %m, largest dx
+  aspect= 0.1;
+  halfwidth= (shelfthickness/aspect)/2;
+  xloc_stretch = (halfwidth+dxmax*(Nx/40))/dxmin;
+  xind=[1:1:Nx/2];
+  dx = (dxmax-dxmin)/2* (tanh(0.5* (xind-xloc_stretch))+1) + dxmin;
+  dx = [flip(dx) dx];
+  %dx = dx / sum(dx) * 2500;
+
+  xx = [cumsum(dx)];
+
+  xx = xx-mean(xx);
+
+  Lx = xx(end)-xx(1);
+
   %%% Plotting mesh
   [Y,X] = meshgrid(yy,xx);
   
   %%% Grid spacing increases with depth, but spacings exactly sum to H
   zidx = 1:Nr;
- %dz = H/Nr*ones(1,Nr);
-%dz = [ones(1,round(0.7*Nr))*.3 linspace(.3,2,Nr-round(0.7*Nr))]; 
-dz = [ones(1,45)*.3 linspace(.3,2,15)];
-%resolution in the top 70% of Nr gridopints is 0.3 m and resolution in
-%bottom 30% of NR gridpts linearly telescopes from 0.3 to 2m vertical res.
-
-
-
-  zz = -cumsum((dz+[0 dz(1:end-1)])/2);
+  refinement = 8; %# controls spacing near surface (higher means finer spaced)
+  stretching = 2;  %# controls rate of stretching at bottom
+  %# "Warped" height coordinate
+  for k=1:Nr
+      h(k) = (Nr + 1 - k) / Nr;
+      %# Linear near-surface generator
+      zeta(k) = 1 + (h(k) - 1) / refinement;
+      %# Bottom-intensified stretching function
+      sigma(k) = (1 - exp(-stretching * h(k))) / (1 - exp(-stretching));
+  end
+  for k=1:Nr
+      %# Generating function
+      zz(Nr-k+1) =  H* (zeta(Nr-k+1) * sigma(Nr-k+1) -1) ;
+  end
+  dz=[ -zz(2) -diff(zz)];
 
   %%% Store grid spacings
   parm04.addParm('delX',dx,PARM_REALS);
   parm04.addParm('delY',dy,PARM_REALS);
   parm04.addParm('delR',dz,PARM_REALS);          
   
-  
+
   
   
   
@@ -292,8 +310,8 @@ dz = [ones(1,45)*.3 linspace(.3,2,15)];
   %%% Flat bottom  
   h = -H*ones(Nx,Ny);
   
- h(:,1)=zeros;
- h(:,end)=zeros;
+ %h(:,1)=zeros;
+ %h(:,end)=zeros;
 
   %%% Save as a parameter
   writeDataset(h,fullfile(inputpath,'bathyFile.bin'),ieee,prec);
@@ -316,100 +334,238 @@ dz = [ones(1,45)*.3 linspace(.3,2,15)];
        
   %%% Quasi-tanh-shaped T/S profiles
  %%%%South BC
- shelfthickness=5; %idea here is to lower T and S profiles by shelfthickness and to make the surface shelfthickness layer relatively unstratified
-  Zpyc = -10-shelfthickness; %southern/inflow boundary pycnocline mid-depth (depth scale)
-  Wpyc = 5; %pycnocline width scale
-  %Smin = 34.0350; %34.2; %34.2;
-  %Smax = 34.4175; %34.22; %34.22; %34.7
-  %Tmin = -0.6825; %-0.6; %-0.6 ;% 0.0901-0.0575*Smin; %%% MITgcm surface freezing temperature
-  %Tmax= -0.2576; %-0.15; %-0.15;  
+ shelfthickness= 100; %idea here is to lower T and S profiles by shelfthickness and to make the surface shelfthickness layer relatively unstratified
+  Zpyc = -shelfthickness; % -10-shelfthickness; %southern/inflow boundary pycnocline mid-depth (depth scale)
+  Wpyc = 10; %5 %pycnocline width scale
   gam_h = 0.01;
-  %tRef = Tmin + (Tmax-Tmin)*0.5*(1+0.5*(sqrt((1-(zz-Zpyc)/Wpyc).^2 + 4*gam_h*((zz-Zpyc)/Wpyc).^2)-sqrt((1+(zz-Zpyc)/Wpyc).^2 + 4*gam_h*((zz-Zpyc)/Wpyc).^2))/(1+gam_h)^(1/2)); %repmat(Tmin,1,60); %Tmin + (Tmax-Tmin)*0.5*(1+0.5*(sqrt((1-(zz-Zpyc)/Wpyc).^2 + 4*gam_h*((zz-Zpyc)/Wpyc).^2)-sqrt((1+(zz-Zpyc)/Wpyc).^2 + 4*gam_h*((zz-Zpyc)/Wpyc).^2))/(1+gam_h)^(1/2));
-  %saltmx = Smin:(Smax-Smin)/(length(zz)-1):Smax;
-
-  %sRef =  Smin + (Smax-Smin)*0.5*(1+0.5*(sqrt((1-(zz-Zpyc)/Wpyc).^2 + 4*gam_h*((zz-Zpyc)/Wpyc).^2)-sqrt((1+(zz-Zpyc)/Wpyc).^2 + 4*gam_h*((zz-Zpyc)/Wpyc).^2))/(1+gam_h)^(1/2)); %interp1(depthmx,saltmx,zz,'linear'); %Smin + (Smax-Smin)*0.5*(1+0.5*(sqrt((1-(zz-Zpyc)/Wpyc).^2 + 4*gam_h*((zz-Zpyc)/Wpyc).^2)-sqrt((1+(zz-Zpyc)/Wpyc).^2 + 4*gam_h*((zz-Zpyc)/Wpyc).^2))/(1+gam_h)^(1/2)); 
- ctd26 = readtable('PetermannIceShelf_26_1.dat');
-  ctd16 = readtable('PetermannIceShelf_03_1.dat'); 
-  ctd26new = table2array(ctd26);
-  ctd16new = table2array(ctd16);
+ 
+% CTD data
+ctd26 = readtable('PetermannIceShelf_26_1.dat');
+ctd16 = readtable('PetermannIceShelf_03_1.dat');
+ctd26new = table2array(ctd26);
+ctd16new = table2array(ctd16);
 ctd16new = sortrows(ctd16new);
 ctd26new = sortrows(ctd26new);
-ctd16new = ctd16new(4813:8658,:);
-ctd26new = ctd26new(3512:4507,:);
+
+% finding ctd 26 value closest to 400 (100 m below channel)
+[min_diff, index_26_400] = min(abs(ctd26new(:, 1) - 400));
+
+% finding ctd 26 value closest to 100
+[min_diff, index_26_100] = min(abs(ctd26new(:, 1) - 100));
+
+% finding ctd 16 value closest to 400 (100 m below channel) 
+[min_diff, index_16_400] = min(abs(ctd16new(:, 1) - 400));
+
+% finding ctd 16 value closest to 100
+[min_diff, index_16_100] = min(abs(ctd16new(:, 1) - 100));
+
+% to depth of 100 
+ctd16new = ctd16new(index_16_100:index_16_400,:);
+ctd26new = ctd26new(index_26_100:index_26_400,:);
+
+
 [~,u1] = unique(ctd16new(:,1),'stable');
 [~,u2] = unique(ctd26new(:,1),'stable');
 ctd16new = ctd16new(u1,:);
 ctd26new = ctd26new(u2,:);
 
-new16x = ctd16new(1,1):min(diff(ctd16new)):ctd16new(end,1);
-salt16 = interp1(ctd16new(:,1), ctd16new(:,4), new16x);
-temp16 = interp1(ctd16new(:,1), ctd16new(:,2), new16x);
-new26x = ctd26new(1,1):min(diff(ctd26new)):ctd26new(end,1);
-salt26 = interp1(ctd26new(:,1), ctd26new(:,4), new26x);
-temp26 = interp1(ctd26new(:,1), ctd26new(:,2), new26x);
+index_zz_chan = find(zz<-shelfthickness);
+index_zz_chan = index_zz_chan(1); 
 
-depth16mx = 0:(-30)/(length(new16x)-1):-30;
-depth26mx = 0:(-30)/(length(new26x)-1):-30;
+% finding ctd 16 value closest to 300 (ice base) 
+[min_diff, index_16_300] = min(abs(ctd16new(:, 1) - 300));
 
 
+% finding ctd 26 value closest to 300 (ice base)
+[min_diff, index_26_300] = min(abs(ctd26new(:, 1) - 300));
 
-  tRef = interp1(depth16mx,temp16,zz,'spline'); 
-  sRef =  interp1(depth16mx,salt16,zz,'spline');
+% finding T/S within channel 
+TS_chan = ctd16new(1:index_16_300,:);
+TS_chan_out = ctd26new(1:index_26_300,:);
 
-  %interp1(depthmx,saltmx,zz,'linear');
-  %deep interpolation (because you want nonzero stratifiction at depth)
- %sRef(round(Nr/4)+shelfthickness:end)=linspace(sRef(round(Nr/4)+shelfthickness),sRef(end),Nr-round(Nr/4)-shelfthickness+1);
- %sRef=smoothdata(sRef); % because the transition to interpolation produced sharp vertical gradients
+% finding T/S outside channel
+% 16 km 
+TS_out = ctd16new(index_16_300+1:length(ctd16new),:);
+depth_ctd_16_out = ctd16new(index_16_300+1:length(ctd16new),1) - TS_chan(length(TS_chan));
 
- %tRef(round(Nr/4)+shelfthickness:end)=linspace(tRef(round(Nr/4)+shelfthickness),tRef(end),Nr-round(Nr/4)-shelfthickness+1);;
- %tRef=smoothdata(tRef);
+% 26 km 
+TS_out2 = ctd26new(index_26_300+1:length(ctd26new),:);
+depth_ctd_26_out = ctd26new(index_26_300+1:length(ctd26new),1) - TS_chan_out(length(TS_chan_out));
 
+
+% compressing T/S in channel to desire channel depth 
+% Define the current depth range of temp_chan
+desired_depth_range = [0, shelfthickness];
+% 16 km
+current_depth_range = [min(TS_chan(:, 1)), max(TS_chan(:, 1))];
+%26 km 
+current_depth_range_out = [min(TS_chan_out(:, 1)), max(TS_chan_out(:, 1))];
+
+% Calculate scaling factors for compression
+% 16 km
+depth_scale_factor = (desired_depth_range(2) - desired_depth_range(1)) / (current_depth_range(2) - current_depth_range(1));
+
+% 26 km 
+depth_scale_factor_out = (desired_depth_range(2) - desired_depth_range(1)) / (current_depth_range_out(2) - current_depth_range_out(1));
+
+% Scale the depth values in temp_chan
+% 16 km
+TS_chan_compressed = TS_chan;
+TS_chan_compressed(:, 1) = (TS_chan(:, 1) - current_depth_range(1)) * depth_scale_factor + desired_depth_range(1);
+
+% 26 km 
+TS_chan_compressed_out = TS_chan_out;
+TS_chan_compressed_out(:, 1) = (TS_chan_out(:, 1) - current_depth_range_out(1)) * depth_scale_factor_out + desired_depth_range(1);
+
+% concatenating
+% 16 km 
+depth_ctd_16_out = depth_ctd_16_out + TS_chan_compressed(length(TS_chan_compressed), 1);  
+
+depth_ref = vertcat(TS_chan_compressed(:, 1), depth_ctd_16_out);
+
+tRef = vertcat(TS_chan_compressed(:, 2), TS_out(:,2));
+
+sRef = vertcat(TS_chan_compressed(:, 4), TS_out(:,4));
+
+% 26 km 
+depth_ctd_26_out = depth_ctd_26_out + TS_chan_compressed_out(length(TS_chan_compressed_out), 1);  
+
+depth_ref_out = vertcat(TS_chan_compressed_out(:, 1), depth_ctd_26_out);
+
+tRefout = vertcat(TS_chan_compressed_out(:, 2), TS_out2(:,2));
+
+sRefout = vertcat(TS_chan_compressed_out(:, 4), TS_out2(:,4));
+
+
+% interpolating to zz
+tRef = interp1(-depth_ref,tRef,zz,'spline');
+sRef =  interp1(-depth_ref,sRef,zz,'spline');
+
+tRefout = interp1(-depth_ref_out,tRefout,zz,'spline');
+sRefout =  interp1(-depth_ref_out,sRefout,zz,'spline');
+
+
+
+% scaling to domain size
+diffsalt = (sRefout - sRef).*(Ly/10e3);
+difftemp = (tRefout - tRef).*(Ly/10e3);
+
+sRefout = sRef +diffsalt; 
+tRefout = tRef +difftemp;
+
+% taking average of north and south boundaries 
+
+s_avg = (sRef + sRefout)./2;  
+t_avg = (tRef + tRefout)./2;
 
 %%%%North BC
-   Zpyc = -10-shelfthickness; %%northern/outflow boundary pycnocline mid-depth
-  Wpyc = 5;
-  %{
-  Smin = 33.9911; %34.2-.2;%33.95;
-  Smax = 34.4091; %34.02; %34.7 %34.02
-  Tmin = -0.6764; %-.61;%-0.65 ;%0.0901-0.0575*Smin; %%% MITgcm surface freezing temperature
-  Tmax=  -0.2586; %-0.15;  
-  %}
-  gam_h = 0.01;
-  %tRefout = Tmin + (Tmax-Tmin)*0.5*(1+0.5*(sqrt((1-(zz-Zpyc)/Wpyc).^2 + 4*gam_h*((zz-Zpyc)/Wpyc).^2)-sqrt((1+(zz-Zpyc)/Wpyc).^2 + 4*gam_h*((zz-Zpyc)/Wpyc).^2))/(1+gam_h)^(1/2)); %repmat(Tmin,1,60); %Tmin + (Tmax-Tmin)*0.5*(1+0.5*(sqrt((1-(zz-Zpyc)/Wpyc).^2 + 4*gam_h*((zz-Zpyc)/Wpyc).^2)-sqrt((1+(zz-Zpyc)/Wpyc).^2 + 4*gam_h*((zz-Zpyc)/Wpyc).^2))/(1+gam_h)^(1/2));
-  %saltmx = Smin:(Smax-Smin)/(length(zz)-1):Smax;
-  depthmx = 0:(-length(ctd26new(:,1)))/59:-30;
-  %sRefout = Smin + (Smax-Smin)*0.5*(1+0.5*(sqrt((1-(zz-Zpyc)/Wpyc).^2 + 4*gam_h*((zz-Zpyc)/Wpyc).^2)-sqrt((1+(zz-Zpyc)/Wpyc).^2 + 4*gam_h*((zz-Zpyc)/Wpyc).^2))/(1+gam_h)^(1/2)); %interp1(depthmx,saltmx,zz,'linear'); %Smin + (Smax-Smin)*0.5*(1+0.5*(sqrt((1-(zz-Zpyc)/Wpyc).^2 + 4*gam_h*((zz-Zpyc)/Wpyc).^2)-sqrt((1+(zz-Zpyc)/Wpyc).^2 + 4*gam_h*((zz-Zpyc)/Wpyc).^2))/(1+gam_h)^(1/2)); 
+Zpyc = -shelfthickness; % -10-shelfthickness; %%northern/outflow boundary pycnocline mid-depth
+Wpyc = 10;
+gam_h = 0.01;
+depthmx = 0:(-length(ctd26new(:,1)))/(length(dz)-1):-H;
+
+%% fitting trinomials; northern boundary
+degree = 6; % Adjust the degree as needed
+p_1 = polyfit(zz, t_avg, degree);
+p_2 = polyfit(zz, s_avg, degree);
 
 
-  tRefout = interp1(depth26mx,temp26,zz,'spline'); 
-  sRefout =  interp1(depth26mx,salt26,zz,'spline');
+% Generate a set of points for the fitted curve
+tFit = polyval(p_1, zz);
+sFit = polyval(p_2,zz);
 
 
-diffsalt = (sRefout - sRef)./10;
-difftemp = (tRefout - tRef)./10;
-sRefout = sRef +diffsalt; 
+sRef = sFit;
+tRef = tFit;
 
-tRefout = tRef +difftemp;
-% interp1(depthmx,saltmx,zz,'linear');
- %sRefout(round(Nr/4):end)=linspace(sRefout(round(Nr/4)),sRefout(end),Nr-round(Nr/4)+1);
-%sRefout(round(Nr/4):end)=sRef(round(Nr/4):end);
- %sRefout=smoothdata(sRefout);%
 
- %tRefout(round(Nr/4):end)=linspace(tRefout(round(Nr/4)),tRefout(end),Nr-round(Nr/4)+1);
-%tRefout(round(Nr/4):end)=tRef(round(Nr/4):end);
-% tRefout=smoothdata(tRefout);
+% Make the profile linear, last 50 m
+% Find the indices where zz < -150
+[~, index_below_minus_150] = min(abs(zz + 150));
 
-  %%% Quasi-linear near-surface stratification
-%   Zpyc = 0;
-%   Hpyc = 300;  
-%   Smin = 34.3;
-%   Smax = 34.7;
-%   Tmin = 0.0901-0.0575*Smin; %%% MITgcm surface freezing temperature
-%   Tmax= 1;  
-%   gam_h = 0.01;
-%   tRef = Tmin + (Tmax-Tmin)*0.5*(sqrt((1-zz/Hpyc).^2 + 4*gam_h*(zz/Hpyc).^2)-sqrt((1+zz/Hpyc).^2 + 4*gam_h*(zz/Hpyc).^2))/(1+gam_h)^(1/2);
-%   sRef = Smin + (Smax-Smin)*0.5*(sqrt((1-zz/Hpyc).^2 + 4*gam_h*(zz/Hpyc).^2)-sqrt((1+zz/Hpyc).^2 + 4*gam_h*(zz/Hpyc).^2))/(1+gam_h)^(1/2);
-  
+% Extract the relevant data for linear fitting
+zz_linear_fit = zz(index_below_minus_150:Nr);
+tRef_linear_fit = tRef(index_below_minus_150:Nr);
+sRef_linear_fit = sRef(index_below_minus_150:Nr);
+
+
+% Perform linear fitting
+linear_fit_coeffs = polyfit(zz_linear_fit, tRef_linear_fit, 1);
+linear_fit_coeffs2 = polyfit(zz_linear_fit, sRef_linear_fit, 1);
+
+% Generate a set of points for the linear fit
+tRef_linear_fit_result = polyval(linear_fit_coeffs, zz_linear_fit);
+sRef_linear_fit_result = polyval(linear_fit_coeffs2, zz_linear_fit);
+
+% Replace the portion of tRef with the linear fit result
+for i = index_below_minus_150:Nr
+tRef(i) = tRef_linear_fit_result(i-index_below_minus_150+1);
+sRef(i) = sRef_linear_fit_result(i-index_below_minus_150+1);
+end
+
+
+% Converting in situ data to potential temperature and absolute salinity
+lat = 80.7; % Average location between 16 and 26 km CTD casts
+long = 60.64; % Average location between 16 and 26 km CTD casts
+tRef = gsw_pt_from_t(sRef,tRef,-zz,0);
+%tRefout = gsw_pt_from_t(sRefout,tRefout,-zz,0);
+
+sRef = gsw_SA_from_SP(sRef,-zz,long,lat);
+%sRefout = gsw_SA_from_SP(sRefout,-zz,long,lat);
+
+
+%{
+% Shifting and stretching function to fit Pine Island 
+% Salinity 
+desired_first_salt = 34.3153;
+desired_last_salt = 34.9144;
+
+
+diff_salt = desired_last_salt - sRef(end);
+sRef = sRef + diff_salt; 
+
+
+% Calculate the slope of the linear transformation
+slope = (desired_last_salt - desired_first_salt) / (sRef(end) - sRef(1));
+
+% Calculate the adjusted tRef values
+sRef_adjusted = slope * (sRef - sRef(1)) + desired_first_salt;
+
+sRef = sRef_adjusted;
+
+% Temperature 
+desired_first_temp = -1.5;
+desired_last_temp = -0.7966;
+
+diff_temp = desired_last_temp - tRef(end); 
+tRef = tRef + diff_temp; 
+
+
+
+% Calculate the slope of the linear transformation
+slope = (desired_last_temp - desired_first_temp) / (tRef(end) - tRef(1));
+
+% Calculate the adjusted tRef values
+tRef_adjusted = slope * (tRef - tRef(1)) + desired_first_temp;
+
+tRef = tRef_adjusted;
+%}
+
+
+
+
+
+
+tRefout = tRef; 
+sRefout = sRef; 
+
+
+
+% Note: If you want to visualize the linear fit, you can plot it using the following:
+% plot(zz, tRef, 'b', zz_linear_fit, tRef_linear_fit_result, 'r--');
+% legend('Original tRef', 'Linear Fit');
+
+
   %%% Plot the reference temperature
   if (showplots)
     figure(fignum);
@@ -437,11 +593,6 @@ tRefout = tRef +difftemp;
   
   
   
-  
-  
-
-
-
   
   
   
@@ -540,7 +691,7 @@ tRefout = tRef +difftemp;
     deltaT = min([deltaT deltaT_vadv]);
   end
   deltaT = round(deltaT);
-  deltaT=deltaT/7; %ad hoc: we found that the normal dT wasn't working (approx. dT=14s)
+  deltaT= deltaT/5; %ad hoc: we found that the normal dT wasn't working (approx. dT=14s)
 
   nTimeSteps = ceil(simTime/deltaT);
   simTimeAct = nTimeSteps*deltaT;
@@ -703,12 +854,14 @@ tRefout = tRef +difftemp;
     
   useRBCtemp = true;
   useRBCsalt = true;
-  useRBCuVel = false;
-  useRBCvVel = false;
+  useRBCuVel = true;
+  useRBCvVel = true;
   tauRelaxT = 0.1*t1day;
   tauRelaxS = 0.1*t1day;
-  tauRelaxU = 0.05*t1day;
-  tauRelaxV = 0.05*t1day;
+  tauRelaxU = -1/f0;%0.05*t1day;
+  tauRelaxV = -1/f0;%0.05*t1day;
+  tidalPeriod = 43200;
+
   rbcs_parm01.addParm('useRBCtemp',useRBCtemp,PARM_BOOL);
   rbcs_parm01.addParm('useRBCsalt',useRBCsalt,PARM_BOOL);
   rbcs_parm01.addParm('useRBCuVel',useRBCuVel,PARM_BOOL);
@@ -718,13 +871,15 @@ tRefout = tRef +difftemp;
   rbcs_parm01.addParm('tauRelaxU',tauRelaxU,PARM_REAL);
   rbcs_parm01.addParm('tauRelaxV',tauRelaxV,PARM_REAL);
   
+   rbcs_parm01.addParm('rbcsForcingPeriod',tidalPeriod,PARM_REAL);
+   rbcs_parm01.addParm('rbcsForcingCycle',tidalPeriod,PARM_REAL);
   
   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   %%%%% RELAXATION TEMPERATURE %%%%%
   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
   %tRefout (outflowing/north BC T/S) defined above
-
+%{
   for i=1:size(tRef,2)
 Tmat(i,:)=linspace(tRef(1,i), tRefout(1,i),Ny);
 Smat(i,:)=linspace(sRef(1,i), sRefout(1,i),Ny);
@@ -735,9 +890,69 @@ Tmatfinal=permute(Tmatfull,[3,2,1]);
 Smatfull=repmat(Smat,[1 1 Nx]);
 Smatfinal=permute(Smatfull,[3,2,1]);
 
+%}
+%%% Setting lower quarter of domain to be nudging region 
 
 
+%{
+lqrt = zz(end)-(zz(end)/4);
 
+saltnorth = sRefout(end-10:end);
+saltsouth = sRef(end-10:end);
+tempnorth = tRefout(end-10:end);
+tempsouth = tRef(end-10:end); 
+
+tempfinal = -2*ones(1,11);
+saltfinal = 35*ones(1,11);
+%}
+%{
+  for i=1:size(tempsouth,2)
+Tmat(i,:)=linspace(tempsouth(1,i), tempnorth(1,i),Ny);
+Smat(i,:)=linspace(saltsouth(1,i), saltnorth(1,i),Ny);
+  end
+%}
+  
+  %{
+%northern conditions
+  for i=1:size(tempnorth,2)
+Tmatnorth(i,:)=linspace(tempnorth(1,i), tempfinal(1,i),Ny);
+Smatnorth(i,:)=linspace(saltnorth(1,i), saltfinal(1,i),Ny);
+  end
+%}
+ %final 
+
+ %tRef=linspace(-0.7, -.25,Nr);
+ %sRef=linspace(34,34.15,Nr);
+%diffr_temp = -0.25 + 1.5; 
+%diffr_salt = 0; %29 - 34.15;
+
+% tRef=linspace(-0.7-diffr_temp, -.25-diffr_temp,Nr);
+ %sRef=linspace(34,34.15,Nr);
+% sRef=linspace(34+diffr_salt,34.15+diffr_salt,Nr);
+
+ % for i=1:size(tRef,2)
+%Tmat(i,:)=linspace(tRef(1,i), tRefout(1,i),Ny);
+%Smat(i,:)=linspace(sRef(1,i), sRefout(1,i),Ny);
+ % end
+
+ 
+  for i=1:size(tRef,2)
+Tmat(i,:)=linspace(tRef(1,i), tRef(1,i),Ny);
+Smat(i,:)=linspace(sRef(1,i), sRef(1,i),Ny);
+  end
+
+ Tmatfull = repmat(Tmat,[1 1 Nx]);
+ Tmatfinal = permute(Tmatfull,[3,2,1]);
+ 
+
+Smatfull = repmat(Smat,[1 1 Nx]);
+Smatfinal = permute(Smatfull,[3,2,1]);
+ 
+
+
+vangle = 0;
+vvelfinal = 0.1*sind(vangle)*ones(Nx,Ny,Nr); %0.05*ones(Nx,Ny,Nr);
+uvelfinal = 0.1*cosd(vangle)*ones(Nx,Ny,Nr); %0*ones(Nx,Ny,Nr);
   
   %%%%%%%%%%%%%%%%%%%%%%%%
   %%%%% INITIAL DATA %%%%%
@@ -758,16 +973,42 @@ Smatfinal=permute(Smatfull,[3,2,1]);
   %end
   
   %%% Add some random noise
-  hydroTh = hydroTh + tNoise*(2*rand(Nx,Ny,Nr)-1);
-  hydroSa = hydroSa + sNoise*(2*rand(Nx,Ny,Nr)-1);
+  hydroTh = hydroTh + tNoise*(0*rand(Nx,Ny,Nr)-0);
+  hydroSa = hydroSa + sNoise*(0*rand(Nx,Ny,Nr)-0);
+
+
+  %%% Adiing initial velocity 
+
+  
+  ui = uvelfinal*cosd(vangle) +vvelfinal*sind(vangle);
+  vi = -uvelfinal*sind(vangle) + vvelfinal*cosd(vangle);
+
+  for i = 1:Nr
+      vvelinitial(:,:,i) = vvelfinal(:,:,i) - (1/2)*(vvelfinal(:,:,i)/Nr)*(Nr-i);
+      uvelinitial(:,:,i) = uvelfinal(:,:,i) - (1/2)*(uvelfinal(:,:,i)/Nr)*(Nr-i);
+  end
+
+
+  [~, index] = min(abs(zz + shelfthickness));
+  uvelinitial (:,:,1:index) = 0;
+
+
   
   %%% Write to data files
-  writeDataset(hydroTh,fullfile(inputpath,'hydrogThetaFile.bin'),ieee,prec); 
+  writeDataset(hydroTh,fullfile(inputpath,'hydrogThetaFile.bin'),ieee,prec);
   parm05.addParm('hydrogThetaFile','hydrogThetaFile.bin',PARM_STR);
-  writeDataset(hydroSa,fullfile(inputpath,'hydrogSaltFile.bin'),ieee,prec); 
+
+  writeDataset(hydroSa,fullfile(inputpath,'hydrogSaltFile.bin'),ieee,prec);
   parm05.addParm('hydrogSaltFile','hydrogSaltFile.bin',PARM_STR);
-  
-  
+
+
+  writeDataset(vvelinitial,fullfile(inputpath,'vVelInitFile.bin'),ieee,prec);
+  parm05.addParm('vVelInitFile','vVelInitFile.bin',PARM_STR);
+
+
+  writeDataset(uvelinitial,fullfile(inputpath,'uVelInitFile.bin'),ieee,prec);
+  parm05.addParm('uVelInitFile','uVelInitFile.bin',PARM_STR);
+
   
   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   %%%%% WRITE THE 'data' FILE %%%%%
@@ -788,7 +1029,13 @@ Smatfinal=permute(Smatfull,[3,2,1]);
   rbcs_parm01.addParm('relaxTFile','sponge_temp.bin',PARM_STR);  
 
   writeDataset(Smatfinal,fullfile(inputpath,'sponge_salt.bin'),ieee,prec); 
-  rbcs_parm01.addParm('relaxSFile','sponge_salt.bin',PARM_STR);  
+  rbcs_parm01.addParm('relaxSFile','sponge_salt.bin',PARM_STR); 
+
+  writeDataset(uvelfinal,fullfile(inputpath,'sponge_uvel.bin'),ieee,prec); 
+  rbcs_parm01.addParm('relaxUFile','sponge_uvel.bin',PARM_STR); 
+
+  writeDataset(vvelfinal,fullfile(inputpath,'sponge_vvel.bin'),ieee,prec); 
+  rbcs_parm01.addParm('relaxVFile','sponge_vvel.bin',PARM_STR); 
   
   %%%%%%%%%%%%%%%%%%%%%  
   %%%%% RBCS MASK %%%%%
@@ -796,23 +1043,44 @@ Smatfinal=permute(Smatfull,[3,2,1]);
   
   
   %%% Mask is zero everywhere by default, i.e. no relaxation
-  msk=zeros(Nx,Ny,Nr);  
+
+  msku=zeros(Nx,Ny,Nr);
+  mskv=zeros(Nx,Ny,Nr);
+  mskt=zeros(Nx,Ny,Nr);
+  msks=zeros(Nx,Ny,Nr);
+
     
   %%% Mask only nonzero at surface in the polynya
-  for j=1:Ny      
-    for i=1:Nx             
-      if (yy(j)<-0.4*Ly) || (yy(j)>0.4*Ly) 
-        msk(:,j,:) = 1;
+
+
+      for i = 1:Nr
+          if zz(i)>-H % -0.9*H
+              %msku(:,:,i) = linspace(0,1,Nr);
+              msku(:,:,i) = 1; 
+              mskv(:,:,i) = 0;
+          end
       end
-    end
-  end         
-  
+
+       for i = 1:Nr
+          if zz(i)< -0.9*H % -0.9*H
+              mskt(:,:,i:Nr) = permute(repmat(linspace(0,1,Nr-i+1)',[1 Nx Ny]),[2 3 1]);
+              msks(:,:,i:Nr) = permute(repmat(linspace(0,1,Nr-i+1)',[1 Nx Ny]),[2 3 1]);
+              
+              break;
+          end
+      end
   %%% Save as an input parameter
-  writeDataset(msk,fullfile(inputpath,'rbcs_temp_mask.bin'),ieee,prec); 
+  writeDataset(mskt,fullfile(inputpath,'rbcs_temp_mask.bin'),ieee,prec); 
   rbcs_parm01.addParm('relaxMaskFile(1)','rbcs_temp_mask.bin',PARM_STR); 
 
-  writeDataset(msk,fullfile(inputpath,'rbcs_salt_mask.bin'),ieee,prec); 
-  rbcs_parm01.addParm('relaxMaskFile(2)','rbcs_salt_mask.bin',PARM_STR);  
+  writeDataset(msks,fullfile(inputpath,'rbcs_salt_mask.bin'),ieee,prec); 
+  rbcs_parm01.addParm('relaxMaskFile(2)','rbcs_salt_mask.bin',PARM_STR); 
+
+  writeDataset(msku,fullfile(inputpath,'rbcs_uvel_mask.bin'),ieee,prec); 
+  rbcs_parm01.addParm('relaxMaskUFile','rbcs_uvel_mask.bin',PARM_STR); 
+
+  writeDataset(mskv,fullfile(inputpath,'rbcs_vvel_mask.bin'),ieee,prec); 
+ rbcs_parm01.addParm('relaxMaskVFile','rbcs_vvel_mask.bin',PARM_STR); 
   
   
   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1266,12 +1534,114 @@ phi0surf=zeros(Nx,Ny);
 fid=fopen(fullfile(inputpath,'SHELFICEloadAnomalyFile.bin'), 'w','b'); 
 fwrite(fid,phi0surf,prec);fclose(fid);
 
-shelfthickness=30;%5
-
-depth=-shelfthickness; %default -15 deep channel
+depth= - shelfthickness; %default -15 deep channel
 icetopo=depth*ones(Nx,Ny);
-halfwidth=150; %30 %10 for default half channel width
-icetopo(round(Nx/2)-round(halfwidth/dx(1)):round(Nx/2)+round(halfwidth/dx(1)),: )=0;
+
+
+% Finding bounds for top of channel
+% East side
+
+%desired_tan = tand(60);  % Tangent of 60 degrees
+%scaling_factor = sqrt(3) / desired_tan; 
+scaling_factor = 3; % 2.75 will adjust the slope of side walls
+differences_east = abs(xx - halfwidth/scaling_factor);
+[minDifference, index_top_east] = min(differences_east);
+index_top_east = index_top_east-1; 
+
+%west side
+differences_west = abs(xx + halfwidth/scaling_factor);
+[minDifference, index_top_west] = min(differences_west);
+
+
+% finding x_new 
+[~, idx_west] = min(abs(xx + halfwidth));
+[~, idx_east] = min(abs(xx- halfwidth));
+idx_west = idx_west-1; 
+x_new = xx(idx_west:index_top_west); 
+
+
+
+% western wall of channel
+x_range = [min(x_new) max(x_new)];
+y_range = [-shelfthickness 0];
+slope_factor = 2;  % Adjust this value to change the slope
+
+% Define the x values
+x = linspace(x_range(1), x_range(2), length(x_new));
+
+% Scale x to the range [-1, 1]
+x_scaled = 2 * (x - x_range(1)) / (x_range(2) - x_range(1)) - 1;
+
+% Apply the slope factor
+x_scaled = slope_factor * x_scaled;
+
+% Compute the tanh function
+y = tanh(x_scaled);
+
+% Scale y to the specified range
+y_scaled = y * (y_range(2) - y_range(1)) / 2 + (y_range(2) + y_range(1)) / 2;
+
+
+y_new_west = interp1(x, y_scaled, x_new, 'spline');
+
+
+
+
+%{
+i = round(length(y_new_west)/2)+1;% Inxex of the point where you want to find the slope
+if i > 1
+    m_secant = (y_new_west(i) - y_new_west(i - 1)) / (x_new(i) - x_new(i - 1));
+else
+    % Handle the case when i is at the beginning of the array
+    % For example, you can calculate the slope using the next point:
+    m_secant = (y_new_west(i + 1) - y_new_west(i)) / (x_new(i + 1) - x_new(i));
+end
+
+
+angle = atand(m_secant);
+%}
+
+x_new = xx(index_top_east:idx_east); 
+
+% shifting function down so transition is smoother 
+west_diff = -shelfthickness - y_new_west(1); 
+y_new_west = y_new_west + west_diff; 
+
+%east_diff = -shelfthickness - y_new_east(length(y_new_east)); 
+y_new_east = flip(y_new_west);  
+
+% defining top of channel
+
+for i = index_top_west:index_top_east
+    icetopo(i,:) = y_new_east(1);
+end
+
+
+% defining west wall
+for i = idx_west:index_top_west 
+    icetopo(i,:) = y_new_west(i-idx_west+1);
+end
+  
+
+% defining east wall
+for i = index_top_east:idx_east 
+    icetopo(i,:) = y_new_east(i-index_top_east+1);
+    %if icetopo(i,:) > max(y_new_west)
+       % icetopo(i,:) = max(y_new_west);
+   % end
+end
+
+
+% adding some ice gridpoints 
+threshold = -dz(1);
+indices = icetopo > threshold;
+icetopo(indices) = threshold;
+
+
+
+
+
+
 
 
 fid=fopen(fullfile(inputpath,'SHELFICEtopoFile.bin'), 'w','b'); 
@@ -1290,7 +1660,9 @@ SHELFICEconserve = true;
 %   SHELFICEheatTransCoeff = .0001;
 SHELFICEheatTransCoeff = 0;
 SHELFICEwriteState = true;
-%SHELFICEselectDragQuadr = 1;
+
+SHELFICEDragQuadratic = 2e-3;
+SHELFICEselectDragQuadr = 0;
 
 
 shelfice_parm01.addParm('SHELFICEloadAnomalyFile',SHELFICEloadAnomalyFile,PARM_STR);
@@ -1300,7 +1672,9 @@ shelfice_parm01.addParm('SHELFICEboundaryLayer',SHELFICEboundaryLayer,PARM_BOOL)
 shelfice_parm01.addParm('SHELFICEconserve',SHELFICEconserve,PARM_BOOL);
 shelfice_parm01.addParm('SHELFICEheatTransCoeff',SHELFICEheatTransCoeff,PARM_REAL);
 shelfice_parm01.addParm('SHELFICEwritestate',SHELFICEwriteState,PARM_BOOL);
-%shelfice_parm01.addParm('SHELFICEselectDragQuadr',SHELFICEselectDragQuadr,PARM_REAL);
+
+shelfice_parm01.addParm('SHELFICEDragQuadratic',SHELFICEDragQuadratic,PARM_REAL);
+shelfice_parm01.addParm('SHELFICEselectDragQuadr',SHELFICEselectDragQuadr,PARM_INT);
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%% WRITE THE 'data.shelfice' FILE %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1325,29 +1699,35 @@ write_data_shelfice(inputpath,SHELFICE_PARM,listterm,realfmt);
 
   %%% To store parameter names and values
   obcs_parm01 = parmlist;
-  obcs_parm02 = parmlist;
-  obcs_parm03 = parmlist;
-  obcs_parm04 = parmlist;
+  %obcs_parm02 = parmlist;
+  %obcs_parm03 = parmlist;
+  %obcs_parm04 = parmlist;
   %obcs_parm05 = parmlist;
-  OBCS_PARM = {obcs_parm01,obcs_parm02,obcs_parm03,obcs_parm04};
+  OBCS_PARM = {obcs_parm01}; %obcs_parm02,obcs_parm03,obcs_parm04};
 
 
   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   %%%%% DEFINE OPEN BOUNDARY TYPES (OBCS_PARM01) %%%%%
   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%{
+
 
   %%%%%% tides ^%%%%%%%% 
-  useOBCStides = use_tides;
+  useOBCStides =  true; %use_tides;
 
-  tidalPeriod=[44714, 43200, 45570, 43082, 86164, 92950, 86637, 96726,1180300,2380706];
-%   tidalPeriod=[44714, 43200, 45570, 43082, 86164, 92950, 86637];
+  tidalPeriod=43200; %[44714, 43200, 45570, 43082, 86164, 92950, 86637, 96726,1180300,2380706];
+  %   tidalPeriod=[44714, 43200, 45570, 43082, 86164, 92950, 86637];
+
+  create_tide_input
 
   OBNamFile= 'OBNamFile.bin';
   OBNphFile= 'OBNphFile.bin';
-  OBEamFile= 'OBEamFile.bin';
-  OBEphFile= 'OBEphFile.bin';
+  %OBEamFile= 'OBEamFile.bin';
+  %OBEphFile= 'OBEphFile.bin';
+  OBSamFile= 'OBSamFile.bin';
+  OBSphFile= 'OBSphFile.bin';
+
+
 
 
 
@@ -1357,11 +1737,19 @@ write_data_shelfice(inputpath,SHELFICE_PARM,listterm,realfmt);
 
   obcs_parm01.addParm('OBNamFile',OBNamFile,PARM_STR);
   obcs_parm01.addParm('OBNphFile',OBNphFile,PARM_STR);
-  obcs_parm01.addParm('OBEamFile',OBEamFile,PARM_STR);
-  obcs_parm01.addParm('OBEphFile',OBEphFile,PARM_STR);
+  obcs_parm01.addParm('OBSamFile',OBSamFile,PARM_STR);
+  obcs_parm01.addParm('OBSphFile',OBSphFile,PARM_STR);
 
-%}
 
+  %useOBCSprescribe = true;
+  %obcs_parm01.addParm('useOBCSprescribe',useOBCSprescribe,PARM_BOOL);
+
+
+
+  %%% Creates the 'data.obcs' file
+  write_data_obcs(inputpath,OBCS_PARM,listterm,realfmt);
+
+%{
 
   %%% Enables an Orlanski radiation condition at the northern boundary
 
@@ -1591,7 +1979,7 @@ fid=fopen(fullfile(inputpath,'SBCs.bin'), 'w','b');  fwrite(fid,SBCs,prec);fclos
   %%% Creates the 'data.obcs' file
   write_data_obcs(inputpath,OBCS_PARM,listterm,realfmt);
 
-
+%}
 
 
 
@@ -1704,9 +2092,9 @@ fid=fopen(fullfile(inputpath,'SBCs.bin'), 'w','b');  fwrite(fid,SBCs,prec);fclos
   
   numdiags_inst = length(diag_fields_inst);  
   if (use_3D)
-    diag_freq_inst = 0.1*t1day;
+    diag_freq_inst = 0.05*t1day; % 0.05
   else
-    diag_freq_inst = 0.1*t1day;
+    diag_freq_inst = 0.05*t1day;
   end
   diag_phase_inst = 0;
   
@@ -1758,7 +2146,7 @@ fid=fopen(fullfile(inputpath,'SBCs.bin'), 'w','b');  fwrite(fid,SBCs,prec);fclos
   packages.addParm('useDiagnostics',true,PARM_BOOL);
   packages.addParm('useSHELFICE',true,PARM_BOOL);
   %packages.addParm('useKPP',~nonHydrostatic,PARM_BOOL);
-  %packages.addParm('useRBCS',~use_seaIce,PARM_BOOL);      
+  packages.addParm('useRBCS',~use_seaIce,PARM_BOOL);      
   packages.addParm('useOBCS',true,PARM_BOOL);     
   packages.addParm('useSEAICE',false,PARM_BOOL);  
   packages.addParm('useEXF',false,PARM_BOOL);  
