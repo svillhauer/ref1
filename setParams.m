@@ -334,7 +334,7 @@ periodicExternalForcing = true;
        
   %%% Quasi-tanh-shaped T/S profiles
  %%%%South BC
- shelfthickness= 100; %idea here is to lower T and S profiles by shelfthickness and to make the surface shelfthickness layer relatively unstratified
+% shelfthickness= 100; %idea here is to lower T and S profiles by shelfthickness and to make the surface shelfthickness layer relatively unstratified
   Zpyc = -shelfthickness; % -10-shelfthickness; %southern/inflow boundary pycnocline mid-depth (depth scale)
   Wpyc = 10; %5 %pycnocline width scale
   gam_h = 0.01;
@@ -1741,8 +1741,8 @@ write_data_shelfice(inputpath,SHELFICE_PARM,listterm,realfmt);
   obcs_parm01.addParm('OBSphFile',OBSphFile,PARM_STR);
 
 
-  %useOBCSprescribe = true;
-  %obcs_parm01.addParm('useOBCSprescribe',useOBCSprescribe,PARM_BOOL);
+ % useOBCSprescribe = true;
+ % obcs_parm01.addParm('useOBCSprescribe',useOBCSprescribe,PARM_BOOL);
 
 
 
@@ -2181,7 +2181,7 @@ fid=fopen(fullfile(inputpath,'SBCs.bin'), 'w','b');  fwrite(fid,SBCs,prec);fclos
   if (use_seaIce)
     ALL_PARMS = [ALL_PARMS SEAICE_PARM EXF_PARM];
   else
-    ALL_PARMS = [ALL_PARMS OBCS_PARM];
+   ALL_PARMS = [ALL_PARMS OBCS_PARM];
   end    
   write_matlab_params(inputpath,ALL_PARMS,realfmt);
   
